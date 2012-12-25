@@ -16,7 +16,7 @@ Struct may be used in OBJECT cffi-type or STRUCT cffi-type"))
 
 (defgeneric new-struct (class)
   (:method (class)
-    (foreign-alloc class)))        
+    (foreign-alloc class)))
 
 (defgeneric free-struct (class value)
   (:method (class value)
@@ -25,13 +25,24 @@ Struct may be used in OBJECT cffi-type or STRUCT cffi-type"))
     ;(format t "Free ~a ~a~%" class value)
     (foreign-free value)))
 
-(defmethod gconstructor ((struct struct) &key new-struct &allow-other-keys)
-  (if new-struct 
-      (new-struct (class-name (class-of struct)))
-      (progn 
-        (setf (slot-value struct 'value) nil)
-        (setf (slot-value struct 'free-after) nil)
-        (null-pointer))))
+(defmethod gconstructor ((struct struct) &rest initargs 
+                         &key new-struct &allow-other-keys)
+  (let ((class-name (class-name (class-of struct)))
+        (pointer (null-pointer)))
+    (if new-struct 
+        (setf pointer (new-struct class-name))
+        (progn 
+          (setf (slot-value struct 'value) nil
+                (slot-value struct 'free-after) nil)))
+    (mapc
+     (lambda (field) 
+       (let ((val (getf initargs (alexandria:make-keyword field))))
+         (if new-struct
+             (setf (foreign-slot-value pointer 
+                                       (list :struct class-name) field) val)
+             (setf (getf (slot-value struct 'value) field) val))))
+     (foreign-slot-names (list :struct class-name)))
+    pointer))
 
 (defun pair (maybe-pair)
   (if (consp maybe-pair) maybe-pair (cons maybe-pair maybe-pair)))
@@ -102,9 +113,11 @@ or may be cons (class-name . struct-name)"
 
 (defun clos->new-struct (class object)
   (if (slot-boundp object 'value)
-      (let ((res (new-struct class)))
-        (clos->struct class object res)
-        res)
+      ;; use make-instance, not new-struct, because gconstructor
+      ;;                                            may be redefined
+      (let ((res (make-instance class :new-struct t)))
+        (clos->struct class object (pointer res))
+        (pointer res))
       (pointer object)))
 
 (defun struct->clos (class struct &optional object)

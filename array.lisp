@@ -34,8 +34,9 @@
            (type (element-type cffi-array)))
       (if (struct-p type)
           (dotimes (i array-length res)
-            (setf (aref res i) (convert-from-foreign (mem-aptr ptr type i)
-                                                     type)))
+            (setf (aref res i) (convert-from-foreign 
+                                (mem-aptr ptr (list :struct (second type)) i)
+                                type)))
           (dotimes (i array-length res)
             (setf (aref res i) (mem-aref ptr type i)))))))
 
