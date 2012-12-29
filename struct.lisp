@@ -25,6 +25,12 @@ Struct may be used in OBJECT cffi-type or STRUCT cffi-type"))
     ;(format t "Free ~a ~a~%" class value)
     (foreign-free value)))
 
+(if (find-symbol "MEM-APTR" "CFFI") ;; new cffi
+    (defun struct-type (type)
+      (list :struct type))
+    (defun struct-type (type)
+      type))
+
 (defmethod gconstructor ((struct struct) &rest initargs 
                          &key new-struct &allow-other-keys)
   (let ((class-name (class-name (class-of struct)))
@@ -39,9 +45,9 @@ Struct may be used in OBJECT cffi-type or STRUCT cffi-type"))
        (let ((val (getf initargs (alexandria:make-keyword field))))
          (if new-struct
              (setf (foreign-slot-value pointer 
-                                       (list :struct class-name) field) val)
+                                       (struct-type class-name) field) val)
              (setf (getf (slot-value struct 'value) field) val))))
-     (foreign-slot-names (list :struct class-name)))
+     (foreign-slot-names (struct-type class-name)))
     pointer))
 
 (defun pair (maybe-pair)
@@ -62,17 +68,17 @@ or may be cons (class-name . struct-name)"
                 (if (slot-boundp ,class-name 'value)
                     (getf (slot-value ,class-name 'value) ',x)
                     (foreign-slot-value (pointer ,class-name)
-                                        '(:struct ,struct-name) ',x)))
+                                        ',(struct-type struct-name) ',x)))
               (unless (fboundp '(setf ,x))
                 (defgeneric (setf ,x) (val ,class-name)))
               (defmethod (setf ,x) (val (,class-name ,class-name))
                 (if (slot-boundp ,class-name 'value)
                     (setf (getf (slot-value ,class-name 'value) ',x) val)
                     (setf (foreign-slot-value (pointer ,class-name) 
-                                              '(:struct ,struct-name) ',x) 
+                                              ',(struct-type struct-name) ',x) 
                           val)))
               (save-setter ,class-name ,x)))
-          (foreign-slot-names `(:struct ,struct-name))))))
+          (foreign-slot-names (struct-type struct-name))))))
 
 (defmacro defbitaccessors (class slot &rest fields)
   (let ((pos 0))
@@ -107,9 +113,9 @@ or may be cons (class-name . struct-name)"
     (mapc (lambda (slot) 
             (let ((val (getf (slot-value object 'value) slot default)))
               (unless (eq val default)
-                (setf (foreign-slot-value struct (list :struct class) slot) 
+                (setf (foreign-slot-value struct (struct-type class) slot) 
                       val))))
-          (foreign-slot-names (list :struct class)))))
+          (foreign-slot-names (struct-type class)))))
 
 (defun clos->new-struct (class object)
   (if (slot-boundp object 'value)
@@ -133,9 +139,9 @@ Only exception is the presence of OBJECT with not boundp value"
           (progn
             (setf (slot-value %object 'value) nil)
             (unless (null-pointer-p struct)
-              (dolist (slot (foreign-slot-names (list :struct class)))
+              (dolist (slot (foreign-slot-names (struct-type class)))
                 (setf (getf (slot-value %object 'value) slot) 
-                      (foreign-slot-value struct (list :struct class) slot)))))
+                      (foreign-slot-value struct (struct-type class) slot)))))
           (setf (pointer %object) struct))
       %object)))
 
@@ -154,7 +160,7 @@ Only exception is the presence of OBJECT with not boundp value"
 
 (defmethod foreign-type-size ((type cffi-struct))
   "Return the size in bytes of a foreign typedef."
-  (foreign-type-size (list :struct (object-class type))))
+  (foreign-type-size (struct-type (object-class type))))
 
 (define-parse-method struct (class &rest rest)
   (apply #'make-instance 'cffi-struct :class class rest))
@@ -192,6 +198,9 @@ Only exception is the presence of OBJECT with not boundp value"
 (defun struct-p (type)
   (and (consp type) (eq (car type) 'struct)))
 
+(defun ptr-struct (ptr type i)
+  (inc-pointer ptr (* i (foreign-type-size type))))
+
 (defun from-foreign (var type count)
   "VAR - symbol; type - symbol or list -- CFFI type; count -- integer"
   (if count
@@ -199,7 +208,7 @@ Only exception is the presence of OBJECT with not boundp value"
         (if (struct-p type)
             (dotimes (i count)
               (setf (aref res i)
-                    (convert-from-foreign (mem-aptr var type i) type)))
+                    (convert-from-foreign (ptr-struct var type i) type)))
             (dotimes (i count)
               (setf (aref res i)
                     (mem-aref var type i))))

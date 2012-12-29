@@ -24,7 +24,8 @@
              (res (foreign-alloc type :count length)))
         (if (struct-p type)
             (dotimes (i length (values res t))
-              (clos->struct (second type) (elt value i) (mem-aptr res type i)))
+              (clos->struct (second type) (elt value i) 
+                            (ptr-struct res type i)))
             (dotimes (i length (values res t))
               (setf (mem-aref res type i) (elt value i)))))))
 
@@ -34,9 +35,8 @@
            (type (element-type cffi-array)))
       (if (struct-p type)
           (dotimes (i array-length res)
-            (setf (aref res i) (convert-from-foreign 
-                                (mem-aptr ptr (list :struct (second type)) i)
-                                type)))
+            (setf (aref res i) (convert-from-foreign (ptr-struct ptr type i)
+                                                     type)))
           (dotimes (i array-length res)
             (setf (aref res i) (mem-aref ptr type i)))))))
 
