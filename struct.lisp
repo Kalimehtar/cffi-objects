@@ -42,11 +42,12 @@ Struct may be used in OBJECT cffi-type or STRUCT cffi-type"))
                 (slot-value struct 'free-after) nil)))
     (mapc
      (lambda (field) 
-       (let ((val (getf initargs (alexandria:make-keyword field))))
-         (if new-struct
-             (setf (foreign-slot-value pointer 
-                                       (struct-type class-name) field) val)
-             (setf (getf (slot-value struct 'value) field) val))))
+       (let ((val (getf initargs (alexandria:make-keyword field) :default)))
+         (unless (eq val :default)
+           (if new-struct
+               (setf (foreign-slot-value pointer 
+                                         (struct-type class-name) field) val)
+               (setf (getf (slot-value struct 'value) field) val)))))
      (foreign-slot-names (struct-type class-name)))
     pointer))
 
@@ -100,11 +101,19 @@ or may be cons (class-name . struct-name)"
                  (incf pos size)))))
       (cons 'progn (mapcar #'build-field fields)))))
 
+(defun parse-struct (body)
+  (mapcar (lambda (str)
+            (if (stringp str) str
+                (let ((str2 (second str)))
+                  (if (and (consp str2) (eq (car str2) :struct))
+                      (list (first str) (struct-type (second str2)))
+                      str))))
+          body))
 
 (defmacro defcstruct* (class &body body)
   `(progn
      (defclass ,class (struct) ())
-     (defcstruct ,class ,@body)
+     (defcstruct ,class ,@(parse-struct body))
      (defcstruct-accessors ,class)
      (init-slots ,class)))
 
@@ -121,7 +130,7 @@ or may be cons (class-name . struct-name)"
   (if (slot-boundp object 'value)
       ;; use make-instance, not new-struct, because gconstructor
       ;;                                            may be redefined
-      (let ((res (make-instance class :new-struct t)))
+      (let ((res (make-instance class :new-struct t :free-after nil)))
         (clos->struct class object (pointer res))
         (pointer res))
       (pointer object)))
