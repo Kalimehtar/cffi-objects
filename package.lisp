@@ -74,7 +74,7 @@ want to export by hand all symbols exported by CFFI.
    #:cffi-string
 
    #:struct
-;   #:cffi-struct
+   #:cffi-struct
    #:new-struct
    #:free-struct
 
@@ -136,6 +136,7 @@ by another c-function) or you don't want to control, when you need
 to free foreign pointer, you should use [[foo-as-value]].
 
 \include{redefines}
+\include{freeable}
 |#
 ;;; </define>
 
