@@ -24,7 +24,7 @@ want to export by hand all symbols exported by CFFI.
         (unexport (list v) p)))))
 
 (defpackage #:cffi-objects
-  (:use #:common-lisp #:cffi)
+  (:use #:common-lisp #:cffi #+message-oo #:message-oo)
   (:export
    #:freeable-base
    ;; slots
@@ -57,7 +57,6 @@ want to export by hand all symbols exported by CFFI.
    ;; methods
    #:free
 
-
    #:*array-length*
    ;; types
    #:pstring
@@ -78,15 +77,16 @@ want to export by hand all symbols exported by CFFI.
    #:new-struct
    #:free-struct
 
-   
    #:defcstruct-accessors
    #:defcstruct*
    #:defbitaccessors
 
+   ;; not for objects, but useful with cffi
    #:with-foreign-out
    #:with-foreign-outs
    #:with-foreign-outs-list
 
+   ;; for creating object models on top of C objects
    #:pair
    #:setf-init
    #:init-slots

@@ -12,9 +12,9 @@
 (defsystem cffi-objects
   :description "CFFI in-place replacement with object wrappers, structs and arrays"
   :author "Roman Klochkov <monk@slavsoft.surgut.ru>"
-  :version "0.9"
+  :version "0.9.1"
   :license "BSD"
-  :depends-on (cffi trivial-garbage)
+  :depends-on (cffi trivial-garbage closer-mop)
   :components
   ((:file package)
    (:file redefines :depends-on (package freeable))

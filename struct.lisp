@@ -54,61 +54,104 @@ Struct may be used in OBJECT cffi-type or STRUCT cffi-type"))
 (defun pair (maybe-pair)
   (if (consp maybe-pair) maybe-pair (cons maybe-pair maybe-pair)))
 
-(defmacro defcstruct-accessors (class)
+(defun slot-accessor (designator)
+  (flet ((count-args (list)
+           (do ((list list (cdr list))
+                (count 0 (1+ count))) 
+               ((or (null list) 
+                    (char= (char (string (car list)) 0) #\&))
+                count))))
+    (let ((lambda-list
+           (closer-mop:generic-function-lambda-list (fdefinition designator))))
+      (= (count-args lambda-list) (if (listp designator) 2 1)))))
+
+(defmacro defaccessor (name c-name class &body body)
+  #-message-oo (declare (ignore c-name))
+  (let ((val* (when (listp name) (list 'val))))
+    `(progn
+       (unless (fboundp ',name)
+         (defgeneric ,name (,@val* ,class)))
+       (if (slot-accessor ',name)
+           (defmethod ,name (,@val* (,class ,class))
+             . ,body)
+           (warn 'style-warning 
+                 "~a is not a slot accessor" ',name))
+       #+message-oo 
+       ,(if val*
+            `(defmessage ,class (,(alexandria:format-symbol 
+                                    :keyword "~A=" c-name)
+                                  val)
+               . ,body)
+            `(defmessage ,class ,(alexandria:make-keyword c-name)
+               . ,body)))))
+
+
+(defmacro defcstruct-accessors (class &rest fields)
   "CLASS may be symbol = class-name = struct name,
 or may be cons (class-name . struct-name)"
   (destructuring-bind (class-name . struct-name) (pair class)
     `(progn
        (clear-setters ,class-name)
        ,@(mapcar
-          (lambda (x) 
-           `(progn
-              (unless (fboundp ',x)
-                (defgeneric ,x (,class-name)))
-              (defmethod ,x ((,class-name ,class-name))
-                (if (slot-boundp ,class-name 'value)
-                    (getf (slot-value ,class-name 'value) ',x)
-                    (foreign-slot-value (pointer ,class-name)
-                                        ',(struct-type struct-name) ',x)))
-              (unless (fboundp '(setf ,x))
-                (defgeneric (setf ,x) (val ,class-name)))
-              (defmethod (setf ,x) (val (,class-name ,class-name))
-                (if (slot-boundp ,class-name 'value)
-                    (setf (getf (slot-value ,class-name 'value) ',x) val)
-                    (setf (foreign-slot-value (pointer ,class-name) 
-                                              ',(struct-type struct-name) ',x) 
+          (lambda (field)
+            (destructuring-bind (lisp-name . c-name) (pair field)
+              `(progn
+                 (defaccessor ,lisp-name ,c-name ,class-name
+                   (if (slot-boundp ,class-name 'value)
+                       (getf (slot-value ,class-name 'value) ',c-name)
+                       (foreign-slot-value (pointer ,class-name)
+                                           ',(struct-type struct-name) 
+                                           ',c-name)))
+                 (defaccessor (setf ,lisp-name) ,c-name ,class-name
+                   (if (slot-boundp ,class-name 'value)
+                       (setf (getf (slot-value ,class-name 'value) 
+                                   ',c-name) 
+                             val)
+                       (setf (foreign-slot-value 
+                               (pointer ,class-name) 
+                               ',(struct-type struct-name) ',c-name)
                           val)))
-              (save-setter ,class-name ,x)))
-          (foreign-slot-names (struct-type struct-name))))))
+              (save-setter ,class-name ,lisp-name))))
+          (or (mapcan (lambda (field) 
+                        (unless (stringp field) (list (car field))))
+                      fields)
+              (foreign-slot-names (struct-type struct-name)))))))
 
 (defmacro defbitaccessors (class slot &rest fields)
   (let ((pos 0))
     (flet ((build-field (field)
              (destructuring-bind (name type size) field
-               (prog1 
-                   `(progn
-                      (unless (fboundp ',name)
-                        (defgeneric ,name (,class)))
-                      (defmethod ,name ((,class ,class))
-                        (convert-from-foreign 
-                         (ldb (byte ,size ,pos) (slot-value ,class ',slot))
-                         ,type))
-                      (unless (fboundp '(setf ,name))
-                        (defgeneric (setf ,name) (value ,class)))
-                      (defmethod (setf ,name) (value (,class ,class))
-                        (setf (ldb (byte ,size ,pos) (slot-value ,class ',slot))
-                              (convert-to-foreign value ,type))))
-                 (incf pos size)))))
+               (destructuring-bind (lisp-name . c-name) (pair name)
+                 (prog1 
+                     `(progn
+                        (defaccessor ,lisp-name ,c-name ,class
+                            (convert-from-foreign 
+                             (ldb (byte ,size ,pos) (slot-value ,class ',slot))
+                             ,type))
+                        (defaccessor (setf ,lisp-name) ,c-name ,class
+                            (setf (ldb (byte ,size ,pos) 
+                                       (slot-value ,class ',slot))
+                                  (convert-to-foreign val ,type))))
+                   (incf pos size))))))
       (cons 'progn (mapcar #'build-field fields)))))
 
 (defun parse-struct (body)
-  (mapcar (lambda (str)
-            (if (stringp str) str
-                (let ((str2 (second str)))
-                  (if (and (consp str2) (eq (car str2) :struct))
-                      (list (first str) (struct-type (second str2)))
-                      str))))
-          body))
+  (flet ((struct? (type)
+           (and (consp type) (eq (car type) :struct)))
+         (cname (name)
+           (destructuring-bind (lisp-name . c-name) (pair name)
+             (declare (ignore lisp-name))
+             c-name)))
+    (mapcar (lambda (str)
+              (if (stringp str) str
+                  (list*
+                   (cname (first str))
+                   (let ((type (second str)))
+                     (if (struct? type)
+                         (struct-type (second type))
+                         type)) 
+                   (cddr str))))
+            body)))
 
 (defmacro defcstruct* (class &body body)
   `(progn
