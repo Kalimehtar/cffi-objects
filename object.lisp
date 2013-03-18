@@ -33,7 +33,7 @@ shouldn't be stored in *OBJECTS*. Stored pointer GC'ed, if VOLATILE."))
   (tg:cancel-finalization object)
   ;(format t "Set pointer: ~a~%" object)
   (when (and (slot-value object 'free-after) (not (null-pointer-p value)))
-    (let ((class (class-of object)))
+    (let ((class (class-name (class-of object))))
       (format t "Set finalizer: ~a ~a ~a~%" object class value)
       (tg:finalize object (lambda ()
                             (format t "Finalize: ~a ~a~%" class value)
@@ -77,7 +77,7 @@ for example, by g_object_new."))
       (remhash (pointer-address pointer) *objects*)
       (remhash id *objects-ids*)
       (when free-after
-        (free-ptr (class-of object) pointer))
+        (free-ptr (class-name (class-of object)) pointer))
       ;; if use (setf pointer (null-pointer)) then 
       ;;   (setf pointer) method is not called
       (setf (pointer object) (null-pointer) 
